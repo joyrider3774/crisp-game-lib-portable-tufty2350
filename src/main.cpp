@@ -9,6 +9,7 @@
 #include "drivers/st7789/st7789.hpp"
 #include "libraries/pico_graphics/pico_graphics.hpp"
 #include "glcdfont.h"
+#include "EEPROM.h"
 #include "lib/menu.h"
 #include "lib/machineDependent.h"
 #include "lib/menuGameList.h"
@@ -30,6 +31,8 @@ using namespace pimoroni;
 
 #define COLOR_SWAP(c) ((uint16_t)((((c) >> 8) | (c) << 8)))
 #define COLOR(r,g,b) COLOR_SWAP(((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3))
+
+#define SAVE_MAGIC 0xDDDD
 
 
 
@@ -74,6 +77,20 @@ static bool endFrame = true;
 static int screenOffsetX = 0;
 static int screenOffsetY = 0;
 
+uint8_t calcCRC(void *data, size_t len) {
+  uint8_t crc = 0;
+  uint8_t *ptr = (uint8_t *)data;
+  for (size_t i = 0; i < len; i++) {
+    crc ^= ptr[i];
+    for (uint8_t j = 0; j < 8; j++) {
+      if (crc & 0x80)
+        crc = (crc << 1) ^ 0x07;
+      else
+        crc <<= 1;
+    }
+  }
+  return crc;
+}
 
 uint8_t readButtons()
 {
@@ -238,12 +255,23 @@ inline void fillRectBuffer(uint16_t *buffer, uint16_t stride, int16_t clipx, int
 
 static void loadHighScores()
 {
-    //read_save(saveData);
+    EEPROM.begin(sizeof(SaveData));
+    EEPROM.get(0, saveData);
+    //needs to be -uint8t size because of crc not included in calculation
+    uint8_t crc = calcCRC(&saveData, sizeof(SaveData) - sizeof(uint8_t));
+    if (saveData.magic != SAVE_MAGIC || saveData.crc != crc) 
+    {
+        memset(&saveData, 0, sizeof(SaveData));
+        saveData.magic = SAVE_MAGIC;
+    }
 }
 
 static void saveHighScores()
 {
-//    write_save(saveData);
+    saveData.crc = calcCRC(&saveData, sizeof(SaveData) - sizeof(uint8_t));
+    EEPROM.begin(sizeof(SaveData));
+    EEPROM.put(0, saveData);
+    bool ok = EEPROM.commit();
 }
 
 void md_playTone(float freq, float duration, float when)
@@ -453,7 +481,7 @@ int main() {
     if(pressed_buttons & BUTTON_UP_MASK)
         debugMode = true;
     fb = (uint16_t*)graphics->frame_buffer;
-
+    onSaveData = saveHighScores;
 	initGame();
     loadHighScores();
 	

@@ -52,7 +52,7 @@ file(GLOB HEADERS
 add_executable(crisp-game-lib-portable ${SOURCES} ${HEADERS})
 
 pico_set_program_name(crisp-game-lib-portable "crisp-game-lib-portable")
-pico_set_program_version(crisp-game-lib-portable "1.0")
+pico_set_program_version(crisp-game-lib-portable "1.1")
 
 # Modify the below lines to enable/disable output over UART/USB
 pico_enable_stdio_uart(crisp-game-lib-portable 0)

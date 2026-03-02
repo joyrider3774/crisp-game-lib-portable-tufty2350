@@ -131,9 +131,14 @@ typedef struct {
   void (*update)(void);
 } Game;
 
+
+#pragma pack(push, 1)
 typedef struct {
+  unsigned int magic;  // always first
   GameHiScore hiScores[MAX_GAME_COUNT];
+  unsigned char crc;
 } SaveData;
+#pragma pack(pop)
 
 /// \cond
 EXTERNC SaveData saveData;
