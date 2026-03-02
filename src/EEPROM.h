@@ -46,6 +46,23 @@
 
 extern uint32_t __flash_binary_end;
 
+// Entire commit logic runs from SRAM via __no_inline_not_in_flash_func.
+// The flash bus is exclusively owned during erase/program — any instruction
+// fetch that misses the XIP cache will stall or crash. Running from SRAM avoids this entirely.
+static bool __no_inline_not_in_flash_func(_eeprom_commit)(uint8_t *data, size_t size) {
+    // Build full sector buffer in SRAM
+    uint8_t sector_buf[FLASH_SECTOR_SIZE];
+    const uint8_t *flash_ptr = (const uint8_t *)(XIP_BASE + EEPROM_FLASH_OFFSET);
+    memcpy(sector_buf, flash_ptr, FLASH_SECTOR_SIZE);  // preserve bytes outside _size
+    memcpy(sector_buf, data, size);                     // overlay our data
+
+    uint32_t ints = save_and_disable_interrupts();
+    flash_range_erase(EEPROM_FLASH_OFFSET, FLASH_SECTOR_SIZE);
+    flash_range_program(EEPROM_FLASH_OFFSET, sector_buf, FLASH_SECTOR_SIZE);
+    restore_interrupts(ints);
+    return true;
+}
+
 class EEPROMClass {
 public:
     EEPROMClass() : _data(nullptr), _size(0), _dirty(false) {}
@@ -98,20 +115,7 @@ public:
 
     bool commit() {
         if (!_data || !_dirty) return true;
-
-        // Pad buffer to full sector size for flash_range_program
-        uint8_t sector_buf[FLASH_SECTOR_SIZE];
-        // Fill with current flash contents first (preserve bytes outside _size)
-        const uint8_t *flash_ptr = (const uint8_t *)(XIP_BASE + EEPROM_FLASH_OFFSET);
-        memcpy(sector_buf, flash_ptr, FLASH_SECTOR_SIZE);
-        // Overlay our data
-        memcpy(sector_buf, _data, _size);
-
-        uint32_t ints = save_and_disable_interrupts();
-        flash_range_erase(EEPROM_FLASH_OFFSET, FLASH_SECTOR_SIZE);
-        flash_range_program(EEPROM_FLASH_OFFSET, sector_buf, FLASH_SECTOR_SIZE);
-        restore_interrupts(ints);
-
+        _eeprom_commit(_data, _size);
         _dirty = false;
         return true;
     }
